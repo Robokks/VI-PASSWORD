@@ -46,7 +46,13 @@ def missing_sidecars(xml_path):
 def run(args, cwd=None):
     env = dict(os.environ)
     env["PYTHONPATH"] = PYL + os.pathsep + env.get("PYTHONPATH", "")
-    return subprocess.call([sys.executable, RR] + args, env=env, cwd=cwd)
+    # capture output so callers (incl. the GUI) can SEE pylabview's messages
+    res = subprocess.run([sys.executable, RR] + args, env=env, cwd=cwd,
+                         capture_output=True, text=True, errors="replace")
+    out = (res.stdout or "") + (res.stderr or "")
+    if out.strip():
+        print(out.rstrip())
+    return res.returncode
 
 def _find_master_xml(folder):
     """The master .xml is the one whose stem prefixes the block sidecar files."""
@@ -60,14 +66,24 @@ def _find_master_xml(folder):
 
 def vi2zip(vi, outzip):
     """.vi -> one self-contained .zip holding the master XML + all sidecars."""
+    if not os.path.isfile(vi):
+        print("ERROR: no such file:", vi); return 2
     tmp = tempfile.mkdtemp(prefix="vi2xml_")
     try:
         rc = run(["-x", "-i", os.path.abspath(vi)], cwd=tmp)
-        if rc != 0: return rc
+        produced = sorted(os.listdir(tmp))
+        # pylabview can exit non-zero on a mere block warning (e.g. VITS) while
+        # still writing a complete, valid XML set - so proceed if the master XML exists.
+        if not _find_master_xml(tmp):
+            print("ERROR: extraction produced no XML (pylabview exit %s)." % rc)
+            print("       See the message above for the cause.")
+            return rc or 1
+        if rc != 0:
+            print("note: pylabview reported a warning (exit %s) but the XML set is complete; continuing." % rc)
         with zipfile.ZipFile(outzip, "w", zipfile.ZIP_DEFLATED) as z:
-            for fn in sorted(os.listdir(tmp)):
+            for fn in produced:
                 z.write(os.path.join(tmp, fn), fn)
-        print("wrote", outzip, "(%d files)" % len(os.listdir(tmp)))
+        print("wrote", outzip, "(%d files)" % len(produced))
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -86,8 +102,13 @@ def zip2vi(inzip, outvi):
         if not master:
             print("ERROR: no master .xml found inside the zip"); return 4
         rc = run(["-c", "-m", master, "-i", os.path.abspath(outvi)], cwd=base)
-        if rc == 0: print("wrote", outvi)
-        return rc
+        if os.path.isfile(outvi) and os.path.getsize(outvi) > 0:
+            if rc != 0:
+                print("note: pylabview warning (exit %s) but the .vi was written." % rc)
+            print("wrote", outvi)
+            return 0
+        print("ERROR: rebuild produced no .vi (pylabview exit %s). See message above." % rc)
+        return rc or 1
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
