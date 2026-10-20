@@ -34,8 +34,17 @@ class App:
         ttk.Label(root, text="Powered by pylabview · round-trip is lossless for parsed blocks",
                   foreground="#666").pack(anchor="w", padx=10)
 
-        # --- VI -> XML ---
-        f1 = ttk.LabelFrame(root, text="VI  →  XML")
+        # --- single-file mode (recommended) ---
+        f0 = ttk.LabelFrame(root, text="Single file  (recommended – no loose files)")
+        f0.pack(fill="x", **pad)
+        r0 = ttk.Frame(f0); r0.pack(fill="x", padx=8, pady=8)
+        ttk.Button(r0, text="VI  →  .zip", command=self.run_vi2zip).pack(side="left")
+        ttk.Button(r0, text="Rebuild VI from .zip", command=self.run_zip2vi).pack(side="left", padx=8)
+        ttk.Label(f0, text="Packs the XML + all block files into ONE .zip you can keep, edit, and rebuild from.",
+                  foreground="#666").pack(anchor="w", padx=10, pady=(0,6))
+
+        # --- VI -> XML (loose files) ---
+        f1 = ttk.LabelFrame(root, text="VI  →  XML  (loose files – keep them together)")
         f1.pack(fill="x", **pad)
         self.vi_path = tk.StringVar()
         r = ttk.Frame(f1); r.pack(fill="x", padx=8, pady=6)
@@ -142,6 +151,46 @@ class App:
         self._go(["-c", "-m", os.path.abspath(src), "-i", os.path.abspath(out)],
                  os.path.dirname(os.path.abspath(src)),
                  "XML → VI  → %s" % os.path.basename(out))
+
+    def run_vi2zip(self):
+        src = filedialog.askopenfilename(title="Choose a .vi",
+              filetypes=[("LabVIEW VI", "*.vi *.ctl *.vit"), ("All files", "*.*")])
+        if not src: return
+        out = filedialog.asksaveasfilename(title="Save single-file bundle as…",
+                defaultextension=".zip", filetypes=[("VI XML bundle", "*.zip")],
+                initialfile=os.path.splitext(os.path.basename(src))[0] + ".vixml.zip")
+        if not out: return
+        self._run_fn(lambda: __import__("viconvert").vi2zip(src, out),
+                     "VI → .zip  (%s)" % os.path.basename(src))
+
+    def run_zip2vi(self):
+        src = filedialog.askopenfilename(title="Choose a .zip bundle",
+              filetypes=[("VI XML bundle", "*.zip"), ("All files", "*.*")])
+        if not src: return
+        out = filedialog.asksaveasfilename(title="Save rebuilt VI as…",
+                defaultextension=".vi", filetypes=[("LabVIEW VI", "*.vi")],
+                initialfile=os.path.splitext(os.path.basename(src))[0].replace(".vixml","") + "_out.vi")
+        if not out: return
+        self._run_fn(lambda: __import__("viconvert").zip2vi(src, out),
+                     "Rebuild from .zip → %s" % os.path.basename(out))
+
+    def _run_fn(self, fn, title):
+        if not os.path.exists(RR):
+            self.write("pylabview engine still missing - fetching… try again when ready.")
+            self.fetch_engine(); return
+        self.write("▶ " + title)
+        def work():
+            import io, contextlib
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                    rc = fn()
+                for line in buf.getvalue().splitlines(): self.write("  " + line)
+                self.write("✓ done\n" if rc == 0 else "✗ exit %s\n" % rc)
+            except Exception as e:
+                for line in buf.getvalue().splitlines(): self.write("  " + line)
+                self.write("✗ error: %s\n" % e)
+        threading.Thread(target=work, daemon=True).start()
 
     def _go(self, args, cwd, title):
         if not os.path.exists(RR):

@@ -15,6 +15,17 @@ git clone https://github.com/mefistotelis/pylabview   # the engine (run inside t
 Layout expected by the scripts: `pylabview/pylabview/readRSRC.py` beside `viconvert.py`.
 (On Debian/Ubuntu also `sudo apt install python3-tk` for the GUI.)
 
+
+## Easiest: single-file mode (recommended)
+Avoids the loose-companion-files problem entirely.
+GUI: **VI → .zip**, then later **Rebuild VI from .zip**.
+CLI:
+```
+python3 viconvert.py vi2zip  "My VI.vi"          # -> My VI.vixml.zip  (self-contained)
+python3 viconvert.py zip2vi  "My VI.vixml.zip"   # -> rebuilt .vi
+```
+Edit files inside the .zip (or extract, edit, re-zip) and rebuild.
+
 ## GUI
 ```
 python3 viconvert_gui.py

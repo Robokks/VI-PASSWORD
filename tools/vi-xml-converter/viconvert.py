@@ -2,14 +2,16 @@
 """viconvert.py - LabVIEW .vi <-> .xml converter (wraps pylabview readRSRC).
 
 Usage:
-  python3 viconvert.py vi2xml  input.vi                 # .vi  -> .xml (+ block files)
-  python3 viconvert.py xml2vi  input.xml [output.vi]    # .xml -> .vi
+  python3 viconvert.py vi2zip  input.vi  [out.vixml.zip]  # .vi  -> ONE self-contained zip  (recommended)
+  python3 viconvert.py zip2vi  in.zip    [output.vi]      # that zip -> rebuilt .vi
+  python3 viconvert.py vi2xml  input.vi                   # .vi  -> loose .xml + block files
+  python3 viconvert.py xml2vi  input.xml [output.vi]      # loose .xml (needs its sidecars) -> .vi
 
 The XML round-trip is lossless for every block pylabview can parse; a block it
 cannot (e.g. some VITS sections) is kept as raw .bin and copied back untouched.
 Requires Python 3.8+, numpy and lxml.
 """
-import sys, os, subprocess
+import sys, os, subprocess, tempfile, zipfile, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PYL  = os.path.join(HERE, "pylabview")                 # repo root (holds the pylabview package)
@@ -41,10 +43,53 @@ def missing_sidecars(xml_path):
     refs = re.findall(r'File="([^"]+)"', text)
     return [r for r in refs if not os.path.exists(os.path.join(d, r))]
 
-def run(args):
+def run(args, cwd=None):
     env = dict(os.environ)
     env["PYTHONPATH"] = PYL + os.pathsep + env.get("PYTHONPATH", "")
-    return subprocess.call([sys.executable, RR] + args, env=env)
+    return subprocess.call([sys.executable, RR] + args, env=env, cwd=cwd)
+
+def _find_master_xml(folder):
+    """The master .xml is the one whose stem prefixes the block sidecar files."""
+    names = os.listdir(folder)
+    xmls = [f for f in names if f.lower().endswith(".xml")]
+    for x in xmls:
+        stem = x[:-4]
+        if any(fn != x and fn.startswith(stem + "_") for fn in names):
+            return os.path.join(folder, x)
+    return os.path.join(folder, xmls[0]) if xmls else None
+
+def vi2zip(vi, outzip):
+    """.vi -> one self-contained .zip holding the master XML + all sidecars."""
+    tmp = tempfile.mkdtemp(prefix="vi2xml_")
+    try:
+        rc = run(["-x", "-i", os.path.abspath(vi)], cwd=tmp)
+        if rc != 0: return rc
+        with zipfile.ZipFile(outzip, "w", zipfile.ZIP_DEFLATED) as z:
+            for fn in sorted(os.listdir(tmp)):
+                z.write(os.path.join(tmp, fn), fn)
+        print("wrote", outzip, "(%d files)" % len(os.listdir(tmp)))
+        return 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+def zip2vi(inzip, outvi):
+    """A .zip made by vi2zip -> rebuilt .vi (all sidecars travel together)."""
+    tmp = tempfile.mkdtemp(prefix="zip2vi_")
+    try:
+        with zipfile.ZipFile(inzip) as z:
+            z.extractall(tmp)
+        base = tmp
+        entries = os.listdir(tmp)
+        if len(entries) == 1 and os.path.isdir(os.path.join(tmp, entries[0])):
+            base = os.path.join(tmp, entries[0])   # zip had a single top folder
+        master = _find_master_xml(base)
+        if not master:
+            print("ERROR: no master .xml found inside the zip"); return 4
+        rc = run(["-c", "-m", master, "-i", os.path.abspath(outvi)], cwd=base)
+        if rc == 0: print("wrote", outvi)
+        return rc
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 def main(argv):
     if len(argv) < 3:
@@ -52,6 +97,12 @@ def main(argv):
     if not ensure_engine():
         return 3
     cmd, src = argv[1], argv[2]
+    if cmd == "vi2zip":
+        out = argv[3] if len(argv) > 3 else os.path.splitext(src)[0] + ".vixml.zip"
+        return vi2zip(src, out)
+    if cmd == "zip2vi":
+        out = argv[3] if len(argv) > 3 else os.path.splitext(src)[0].replace(".vixml", "") + "_out.vi"
+        return zip2vi(src, out)
     if cmd == "vi2xml":
         return run(["-x", "-i", src])
     if cmd == "xml2vi":
