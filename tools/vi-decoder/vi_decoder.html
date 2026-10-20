@@ -1,0 +1,321 @@
+<title>VI Decoder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+  /* Layout: a bench instrument — drop a .vi on the left, read the decoded structure and flow schematic on the right.
+     Palette keyed to LabVIEW's orange DBL wires on a graphite panel. */
+  :root{
+    --bg:#eceef0; --panel:#f7f8f9; --node:#ffffff; --node-2:#eef1f3;
+    --ink:#1c2126; --muted:#5b6670; --line:#c6ccd2;
+    --num:#e07b1a; --num-soft:#f6e3cd;
+    --struct:#2f8f83; --ok:#2e8b57; --warn:#c2410c;
+    --field:#ffffff; --field-br:#bcc4cc;
+    --shadow:0 1px 2px rgba(20,30,40,.08),0 6px 18px rgba(20,30,40,.06);
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#15181c; --panel:#1d2127; --node:#262b31; --node-2:#20252b;
+    --ink:#e7ecf0; --muted:#9aa5af; --line:#3a424b;
+    --num:#f08a2c; --num-soft:#3a2c1a;
+    --struct:#49b3a4; --ok:#52b980; --warn:#f0843c;
+    --field:#20252b; --field-br:#3a424b;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#15181c; --panel:#1d2127; --node:#262b31; --node-2:#20252b;
+    --ink:#e7ecf0; --muted:#9aa5af; --line:#3a424b;
+    --num:#f08a2c; --num-soft:#3a2c1a;
+    --struct:#49b3a4; --ok:#52b980; --warn:#f0843c;
+    --field:#20252b; --field-br:#3a424b;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;
+    padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:26px}
+  .wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  header{display:flex;flex-direction:column;gap:5px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:clamp(1.5rem,4vw,2rem);margin:0;font-weight:600;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:.93rem;max-width:66ch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  /* drop zone */
+  .drop{padding:26px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;border:2px dashed var(--field-br);border-radius:14px;background:var(--panel);cursor:pointer;transition:border-color .15s,background .15s}
+  .drop.hot{border-color:var(--num);background:var(--num-soft)}
+  .drop svg{width:34px;height:34px;color:var(--num)}
+  .drop b{font-size:1.02rem}
+  .drop .hint{font-size:.82rem;color:var(--muted)}
+  .pick{font-family:"IBM Plex Mono",monospace;font-size:.82rem;color:var(--num);font-weight:600;text-decoration:underline}
+  input[type=file]{display:none}
+  /* result sections */
+  h2{font-size:.78rem;font-family:"IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 2px}
+  .sec{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .tile{background:var(--node-2);border:1px solid var(--line);border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+  .tile .k{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--muted);letter-spacing:.03em}
+  .tile .v{font-family:"IBM Plex Mono",monospace;font-size:.98rem;font-weight:600;overflow-wrap:anywhere}
+  .v.ok{color:var(--ok)} .v.warn{color:var(--warn)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{font-family:"IBM Plex Mono",monospace;font-size:.8rem;padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:var(--node)}
+  .chip.num{border-color:var(--num);color:var(--num)}
+  .chip.fn{border-color:var(--struct);color:var(--struct)}
+  .blocklist{display:flex;flex-wrap:wrap;gap:6px}
+  .blk{font-family:"IBM Plex Mono",monospace;font-size:.76rem;padding:3px 7px;border-radius:5px;background:var(--node-2);border:1px solid var(--line);color:var(--muted)}
+  .blk.hot{color:var(--ink);border-color:var(--num);background:var(--num-soft)}
+  .scrollx{overflow-x:auto}
+  svg.flow{display:block;width:100%;min-width:480px;height:auto}
+  .note{font-size:.83rem;color:var(--muted);display:flex;gap:8px;align-items:flex-start}
+  .note b{color:var(--ink);font-weight:600}
+  details{font-size:.85rem}
+  details summary{cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--muted)}
+  pre{font-family:"IBM Plex Mono",monospace;font-size:.76rem;background:var(--node-2);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;max-height:220px;margin:8px 0 0}
+  .err{color:var(--warn);font-family:"IBM Plex Mono",monospace;font-size:.85rem}
+  .foot{color:var(--muted);font-size:.76rem;font-family:"IBM Plex Mono",monospace}
+  text{font-family:"IBM Plex Mono",monospace}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">LabVIEW RSRC · client-side</div>
+    <h1>VI Decoder</h1>
+    <p class="sub">Drop a LabVIEW <code>.vi</code> file to decode its structure in your browser — nothing is uploaded. Reads the RSRC blocks, version, password status, and front‑panel terminals, and draws a flow schematic of the terminals and detected function nodes.</p>
+  </header>
+
+  <label class="drop" id="drop" for="file">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/></svg>
+    <b>Drop a .vi file here</b>
+    <span class="hint">or <span class="pick">choose a file</span> · stays on your device</span>
+    <input type="file" id="file" accept=".vi,.ctl,.vit">
+  </label>
+
+  <div id="out" hidden></div>
+
+  <p class="foot">Decodes structure reliably; the flow schematic is best‑effort. Exact node wiring needs full heap parsing (pylabview).</p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var EMPTY_MD5="d41d8cd98f00b204e9800998ecf8427e";
+  // Verified primResID -> name (from the LabVIEW-sourced pylabview corpus). Extend freely.
+  var PRIM={
+    1049:"Sign", 1050:"Add", 1051:"Subtract", 1052:"Multiply",
+    1142:"To Long Integer", 1147:"To Double Precision Float",
+    1184:"Decimal String To Number", 1188:"To Upper Case",
+    1213:"Power Of X", 1537:"Reverse String", 1608:"String To Byte Array"
+  };
+
+  var drop=document.getElementById('drop'),
+      file=document.getElementById('file'),
+      out=document.getElementById('out');
+
+  ['dragenter','dragover'].forEach(function(e){drop.addEventListener(e,function(ev){ev.preventDefault();drop.classList.add('hot');});});
+  ['dragleave','drop'].forEach(function(e){drop.addEventListener(e,function(ev){ev.preventDefault();drop.classList.remove('hot');});});
+  drop.addEventListener('drop',function(ev){var f=ev.dataTransfer.files[0]; if(f) read(f);});
+  file.addEventListener('change',function(){var f=file.files[0]; if(f) read(f);});
+
+  function read(f){
+    var r=new FileReader();
+    r.onload=function(){ decode(new Uint8Array(r.result), f.name).catch(function(e){ fail(e.message||String(e)); }); };
+    r.readAsArrayBuffer(f);
+  }
+  function fail(msg){ out.hidden=false; out.innerHTML='<div class="card sec"><div class="err">Could not decode: '+esc(msg)+'</div></div>'; }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  // ---- big-endian readers ----
+  function u32(d,o){ return (d[o]<<24>>>0)+(d[o+1]<<16)+(d[o+2]<<8)+d[o+3]; }
+  function ascii(d,o,n){ var s=''; for(var i=0;i<n;i++) s+=String.fromCharCode(d[o+i]); return s; }
+  function hex(d,o,n){ var s=''; for(var i=0;i<n;i++){ var h=d[o+i].toString(16); s+=h.length<2?'0'+h:h; } return s; }
+
+  async function inflate(u8){
+    if('DecompressionStream' in window){
+      try{
+        var ds=new DecompressionStream('deflate');
+        var stream=new Blob([u8]).stream().pipeThrough(ds);
+        var buf=await new Response(stream).arrayBuffer();
+        return new Uint8Array(buf);
+      }catch(e){/* fall through */}
+    }
+    if(window.pako) return window.pako.inflate(u8);
+    throw new Error('no inflate available');
+  }
+
+  function strings(u8,min){
+    min=min||3; var res=[],cur=[];
+    for(var i=0;i<u8.length;i++){
+      var c=u8[i];
+      if(c>=32&&c<127){ cur.push(c); }
+      else { if(cur.length>=min) res.push(String.fromCharCode.apply(null,cur)); cur=[]; }
+    }
+    if(cur.length>=min) res.push(String.fromCharCode.apply(null,cur));
+    return res;
+  }
+
+  async function decode(d, fname){
+    if(d.length<32 || ascii(d,0,4)!=='RSRC') throw new Error('not an RSRC file (missing RSRC signature)');
+    var typ=ascii(d,8,4), creator=ascii(d,12,4);
+    // walk to last header
+    var pos=0,last=-1,guard=0;
+    while(pos!==last && guard++<16){ last=pos; var ro=u32(d,pos+16); if(ro>0 && ro+32<=d.length && ascii(d,ro,4)==='RSRC') pos=ro; else break; }
+    var rsrcOffset=pos;
+    var p=rsrcOffset+24;
+    var dataSetOffset=u32(d,p), blockInfoOffset=rsrcOffset+u32(d,p+20), blkSize=u32(d,p+24);
+    // block table
+    var cnt=u32(d,blockInfoOffset)+1, q=blockInfoOffset+4, blocks={}, order=[];
+    if(cnt>0 && cnt<4096){
+      for(var i=0;i<cnt;i++){
+        var name=ascii(d,q,4), rel=u32(d,q+8), entry=blockInfoOffset+rel; q+=12;
+        if(entry+16<=d.length){ var bo=dataSetOffset+u32(d,entry+12); blocks[name]=bo; order.push(name); }
+      }
+    }
+    // VI name: trailing printable run ending in a dot-extension
+    var tail=strings(d.subarray(Math.max(0,d.length-80)),4);
+    var viName=fname;
+    for(var t=tail.length-1;t>=0;t--){ if(/\.(vi|ctl|vit)$/i.test(tail[t])){ viName=tail[t]; break; } }
+
+    // version from 'vers' block
+    var version='—';
+    if('vers' in blocks){ var vb=blocks.vers; var vs=strings(d.subarray(vb+4, vb+80),3); for(var k=0;k<vs.length;k++){ if(/^\d+\.\d/.test(vs[k])){ version=vs[k]; break; } } }
+
+    // password from BDPW
+    var pw={state:'none', md5:''};
+    if('BDPW' in blocks){ var bb=blocks.BDPW; var sz=u32(d,bb); if(sz>=16){ pw.md5=hex(d,bb+4,16); pw.state = pw.md5===EMPTY_MD5 ? 'none' : 'set'; } }
+    else { pw.state='absent'; }
+
+    // decompress heaps: scan for zlib 0x78 0x9c
+    var heaps={};
+    for(var z=8; z<d.length-2; z++){
+      if(d[z]===0x78 && d[z+1]===0x9c){
+        if(z<8) continue;
+        var unc=u32(d,z-4), comp=u32(d,z-8);
+        if(unc<=0 || unc>8*1024*1024) continue;
+        if(comp<=0 || z+comp>d.length) comp=d.length-z;
+        try{
+          var inf=await inflate(d.subarray(z, z+comp));
+          if(inf.length>=unc-4 && inf.length<=unc+64){
+            // tag = nearest 4 uppercase letters before z
+            var tag='?';
+            for(var b=z-8;b>z-64 && b>=0;b--){ if(/^[A-Z]{4}$/.test(ascii(d,b,4))){ tag=ascii(d,b,4); break; } }
+            if(!heaps[tag]) heaps[tag]=inf;
+          }
+        }catch(e){/* skip */}
+      }
+    }
+    var fp=heaps.FPHP, bd=heaps.BDHP;
+
+    // terminal labels from front panel heap
+    var terms=[], rawFp=[];
+    if(fp){
+      var seen={};
+      rawFp=strings(fp,2);
+      rawFp.forEach(function(s0){
+        var s=s0.replace(/^[A-Za-z]"/,'').replace(/^[^A-Za-z0-9]+/,''); // strip leading type-tag / punctuation
+        if(/^(Pane|Segoe UI|Small Fonts)$/.test(s)) return;
+        if(s.length===2) return;  // heap-fragment noise band (keep 1-char var names and 3+ labels)
+        if(/^[A-Za-z][A-Za-z0-9 _+().\-]{0,19}$/.test(s) && !seen[s]){ seen[s]=1; terms.push(s); }
+      });
+    }
+
+    // detected primitives from block diagram heap (scan primResID BE16)
+    var fns=[];
+    if(bd){
+      Object.keys(PRIM).forEach(function(id){
+        var hi=(id>>8)&0xff, lo=id&0xff, c=0;
+        for(var i=0;i<bd.length-1;i++){ if(bd[i]===hi && bd[i+1]===lo) c++; }
+        if(c>0) fns.push({id:+id, name:PRIM[id], n:c});
+      });
+    }
+
+    render({fname:fname,viName:viName,typ:typ,creator:creator,version:version,pw:pw,
+      blocks:order,heaps:Object.keys(heaps),terms:terms,fns:fns,
+      fpLen:fp?fp.length:0, bdLen:bd?bd.length:0,
+      rawFp:rawFp, rawBd: bd?strings(bd,3):[]});
+  }
+
+  function render(m){
+    var pwTxt = m.pw.state==='none' ? 'none (empty)' : m.pw.state==='set' ? 'password set' : 'no BDPW';
+    var pwCls = m.pw.state==='set' ? 'warn' : 'ok';
+    var html='';
+    html+='<div class="card sec">';
+    html+='<h2>Identity</h2><div class="grid">'
+      + tile('VI name', esc(m.viName))
+      + tile('Type', esc(m.typ)+' · '+esc(m.creator))
+      + tile('Version', esc(m.version))
+      + tile('Password', pwTxt, pwCls)
+      + '</div>';
+    if(m.pw.md5) html+='<div class="note"><span>password MD5: <b>'+esc(m.pw.md5)+'</b>'+(m.pw.state==='none'?' = md5("") → unprotected':'')+'</span></div>';
+    html+='</div>';
+
+    // flow schematic
+    html+='<div class="card sec"><h2>Flow schematic</h2>'+ flowSVG(m.terms,m.fns)
+      +'<div class="note"><span><b>Approximate.</b> Terminals are read from the front‑panel heap and functions from the diagram heap; exact wire routing is not reconstructed here.</span></div></div>';
+
+    // parts
+    html+='<div class="card sec"><h2>Terminals ('+m.terms.length+')</h2><div class="chips">'
+      + (m.terms.length? m.terms.map(function(t){return '<span class="chip num">'+esc(t)+'</span>';}).join('') : '<span class="note">none decoded</span>')
+      + '</div>';
+    html+='<h2 style="margin-top:6px">Detected functions ('+m.fns.length+')</h2><div class="chips">'
+      + (m.fns.length? m.fns.map(function(f){return '<span class="chip fn">'+esc(f.name)+' · resID '+f.id+(f.n>1?' ×'+f.n:'')+'</span>';}).join('') : '<span class="note">none matched the built-in name table</span>')
+      + '</div></div>';
+
+    // blocks
+    html+='<div class="card sec"><h2>RSRC blocks ('+m.blocks.length+')</h2><div class="blocklist">'
+      + m.blocks.map(function(b){ var hot=/^(BDPW|vers|BDHb|FPHb|VCTP|CONP)$/.test(b); return '<span class="blk'+(hot?' hot':'')+'">'+esc(b)+'</span>'; }).join('')
+      + '</div>';
+    html+='<div class="note" style="margin-top:4px"><span>Decompressed heaps: '+(m.heaps.length?esc(m.heaps.join(', ')):'none')
+      +(m.fpLen?' · FPHP '+m.fpLen+'B':'')+(m.bdLen?' · BDHP '+m.bdLen+'B':'')+'</span></div>';
+    if((m.rawFp&&m.rawFp.length)||(m.rawBd&&m.rawBd.length)){
+      html+='<details><summary>Raw heap strings</summary>'
+        +'<pre>'+esc('— Front panel —\n'+(m.rawFp||[]).join('\n')+'\n\n— Block diagram —\n'+(m.rawBd||[]).join('\n'))+'</pre></details>';
+    }
+    html+='</div>';
+
+    out.hidden=false; out.innerHTML=html;
+  }
+
+  function tile(k,v,cls){ return '<div class="tile"><span class="k">'+k+'</span><span class="v'+(cls?' '+cls:'')+'">'+v+'</span></div>'; }
+
+  function flowSVG(terms,fns){
+    var W=760, rowH=34, pad=26;
+    var nIn=terms.length||1, nFn=fns.length;
+    var leftN=terms.length, rows=Math.max(leftN, nFn, 1);
+    var H=Math.max(140, pad*2 + rows*rowH);
+    var xL=20, wL=150, xF=300, wF=170, xR=W-20-150, wR=150;
+    var cy=H/2;
+    var s='<div class="scrollx"><svg class="flow" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="flow schematic">';
+    // wires terminals -> function cluster -> outputs (generic)
+    var fnCx=xF+wF/2, fnTop=cy-(Math.max(nFn,1)*rowH)/2;
+    // draw terminal boxes (left) and wire to function area
+    terms.forEach(function(t,i){
+      var y=pad + i*rowH + (H-2*pad-leftN*rowH)/2 + rowH/2;
+      s+=wire(xL+wL, y, xF, cy, 'var(--num)');
+      s+=box(xL,y-13,wL,26,t,'var(--num)',2,'var(--ink)');
+    });
+    // function nodes (middle)
+    if(nFn===0){
+      s+=box(xF,cy-16,wF,32,'(no named node)','var(--line)',1.5,'var(--muted)');
+    } else {
+      fns.forEach(function(f,i){
+        var y=cy-(nFn*rowH)/2 + i*rowH + rowH/2;
+        s+=box(xF,y-13,wF,26,f.name,'var(--struct)',2,'var(--struct)');
+        s+=wire(xF+wF, y, xR, cy, 'var(--struct)');
+      });
+    }
+    // output marker (right)
+    s+=box(xR,cy-16,wR,32,'outputs','var(--num)',1.4,'var(--muted)');
+    s+='</svg></div>';
+    return s;
+  }
+  function box(x,y,w,h,label,stroke,sw,tc){
+    var lbl=label.length>18?label.slice(0,17)+'…':label;
+    return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="6" fill="var(--node)" stroke="'+stroke+'" stroke-width="'+sw+'"></rect>'
+      +'<text x="'+(x+w/2)+'" y="'+(y+h/2+4.5)+'" text-anchor="middle" font-size="13" font-weight="600" fill="'+tc+'">'+esc(lbl)+'</text>';
+  }
+  function wire(x1,y1,x2,y2,c){
+    var mx=(x1+x2)/2;
+    return '<path d="M'+x1+','+y1+' C'+mx+','+y1+' '+mx+','+y2+' '+x2+','+y2+'" fill="none" stroke="'+c+'" stroke-width="2.5" opacity=".8"></path>';
+  }
+})();
+</script>

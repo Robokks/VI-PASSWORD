@@ -1,0 +1,250 @@
+<title>Add & Build Array VI</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Layout: an instrument panel — control strip on top, wiring diagram below, live readout at the foot.
+     Palette keyed to LabVIEW's orange DBL wires on a cool graphite panel. */
+  :root{
+    --bg:#eceef0; --panel:#f7f8f9; --node:#ffffff; --node-2:#f0f2f4;
+    --ink:#1c2126; --muted:#5b6670; --line:#c6ccd2;
+    --num:#e07b1a;            /* DBL numeric — wire + terminal */
+    --num-soft:#f6e3cd;
+    --struct:#2f8f83;         /* structure accent (Build Array) */
+    --grid:#dfe3e7;
+    --field:#ffffff; --field-br:#bcc4cc;
+    --shadow:0 1px 2px rgba(20,30,40,.08),0 6px 18px rgba(20,30,40,.06);
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#15181c; --panel:#1d2127; --node:#262b31; --node-2:#20252b;
+    --ink:#e7ecf0; --muted:#9aa5af; --line:#3a424b;
+    --num:#f08a2c; --num-soft:#3a2c1a;
+    --struct:#49b3a4; --grid:#262c33;
+    --field:#20252b; --field-br:#3a424b;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#15181c; --panel:#1d2127; --node:#262b31; --node-2:#20252b;
+    --ink:#e7ecf0; --muted:#9aa5af; --line:#3a424b;
+    --num:#f08a2c; --num-soft:#3a2c1a;
+    --struct:#49b3a4; --grid:#262c33;
+    --field:#20252b; --field-br:#3a424b;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.3);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    line-height:1.5;
+    padding-left:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px));
+    padding-block:28px;
+  }
+  .wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+  header{display:flex;flex-direction:column;gap:6px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:clamp(1.5rem,4vw,2rem);margin:0;font-weight:600;text-wrap:balance;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:.95rem;max-width:62ch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  /* control strip */
+  .controls{padding:16px 18px;display:flex;flex-wrap:wrap;gap:22px;align-items:flex-end}
+  .ctl{display:flex;flex-direction:column;gap:7px;min-width:150px;flex:1 1 180px}
+  .ctl label{font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:7px}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--num);flex:none;box-shadow:0 0 0 2px var(--num-soft)}
+  .ctl input[type=range]{width:100%;accent-color:var(--num)}
+  .numrow{display:flex;align-items:center;gap:10px}
+  .numrow input[type=number]{
+    width:92px;font-family:"IBM Plex Mono",monospace;font-size:1rem;font-weight:500;
+    padding:7px 9px;border:1px solid var(--field-br);border-radius:8px;background:var(--field);color:var(--ink);
+  }
+  input:focus-visible{outline:2px solid var(--num);outline-offset:1px}
+  .hint{font-size:.78rem;color:var(--muted)}
+  /* diagram */
+  .diagram{padding:10px 8px 6px}
+  .scrollx{overflow-x:auto}
+  svg{display:block;width:100%;min-width:540px;height:auto}
+  text{font-family:"IBM Plex Mono",monospace}
+  .nodeLabel{font-family:"IBM Plex Sans",sans-serif;font-weight:600}
+  /* live readout */
+  .readout{padding:16px 18px;display:flex;flex-wrap:wrap;gap:14px}
+  .tile{flex:1 1 150px;min-width:0;background:var(--node-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+  .tile .k{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--muted);letter-spacing:.04em}
+  .tile .v{font-family:"IBM Plex Mono",monospace;font-size:1.25rem;font-weight:600;color:var(--num);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  .tile.arr .v{color:var(--struct)}
+  /* notes */
+  .notes{padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-size:.9rem}
+  .notes h2{font-size:.95rem;margin:0 0 2px;font-weight:600}
+  .notes code{font-family:"IBM Plex Mono",monospace;background:var(--node-2);padding:1px 5px;border-radius:5px;font-size:.86em}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .sw{width:26px;height:0;border-top:3px solid var(--num);border-radius:2px}
+  .sw.arr{border-top-width:6px;border-top-color:var(--struct)}
+  .foot{color:var(--muted);font-size:.78rem;font-family:"IBM Plex Mono",monospace}
+  @media (prefers-reduced-motion:no-preference){
+    .flow{stroke-dasharray:7 9;animation:dash 1s linear infinite}
+  }
+  @keyframes dash{to{stroke-dashoffset:-16}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">LabVIEW 2023 · RSRC decode</div>
+    <h1>Add &amp; Build Array VI</h1>
+    <p class="sub">The real dataflow of <code>Untitled 21.vi</code>, recovered from its block‑diagram heap. Set <b>x</b> and <b>y</b> and watch the values flow through the Add and Build Array nodes.</p>
+  </header>
+
+  <div class="card controls">
+    <div class="ctl">
+      <label><span class="dot"></span>x · DBL control</label>
+      <div class="numrow"><input id="x" type="number" value="2" step="1" aria-label="x value"></div>
+      <input id="xr" type="range" min="-10" max="10" step="1" value="2" aria-label="x slider">
+    </div>
+    <div class="ctl">
+      <label><span class="dot"></span>y · DBL control</label>
+      <div class="numrow"><input id="y" type="number" value="3" step="1" aria-label="y value"></div>
+      <input id="yr" type="range" min="-10" max="10" step="1" value="3" aria-label="y slider">
+    </div>
+    <div class="hint">Both terminals are double‑precision floats (NumFloat64).</div>
+  </div>
+
+  <div class="card diagram">
+    <div class="scrollx">
+      <svg viewBox="0 0 820 320" role="img" aria-label="Block diagram: x and y feed an Add node producing b, and a Build Array node producing the Data array">
+        <defs>
+          <marker id="arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--num)"></path>
+          </marker>
+          <marker id="arrowA" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--struct)"></path>
+          </marker>
+        </defs>
+
+        <!-- ===== wires (drawn first, under nodes) ===== -->
+        <g fill="none" stroke="var(--num)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+          <!-- x -> Add.in1 -->
+          <polyline class="flow" points="144,75 320,75"></polyline>
+          <!-- x branch -> BuildArray.in3 -->
+          <polyline class="flow" points="185,75 185,272 320,272"></polyline>
+          <!-- y -> Add.in2 -->
+          <polyline class="flow" points="144,169 225,169 225,101 320,101"></polyline>
+          <!-- y branch -> BuildArray.in2 -->
+          <polyline class="flow" points="225,169 225,244 320,244"></polyline>
+          <!-- Add.out -> b -->
+          <polyline class="flow" points="392,88 636,88" marker-end="url(#arrow)"></polyline>
+          <!-- Add.out branch -> BuildArray.in1 -->
+          <polyline class="flow" points="520,88 520,160 300,160 300,216 320,216"></polyline>
+          <!-- arrowheads into Add + BuildArray inputs -->
+          <polyline points="300,75 320,75" marker-end="url(#arrow)"></polyline>
+          <polyline points="305,101 320,101" marker-end="url(#arrow)"></polyline>
+          <polyline points="305,216 320,216" marker-end="url(#arrow)"></polyline>
+          <polyline points="305,244 320,244" marker-end="url(#arrow)"></polyline>
+          <polyline points="305,272 320,272" marker-end="url(#arrow)"></polyline>
+        </g>
+        <!-- Data wire: array = thicker wire -->
+        <g fill="none" stroke="var(--struct)" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+          <polyline class="flow" points="470,244 624,244" marker-end="url(#arrowA)"></polyline>
+        </g>
+
+        <!-- junction dots -->
+        <g fill="var(--num)">
+          <circle cx="185" cy="75" r="4.5"></circle>
+          <circle cx="225" cy="169" r="4.5"></circle>
+          <circle cx="520" cy="88" r="4.5"></circle>
+        </g>
+
+        <!-- wire value labels -->
+        <g fill="var(--muted)" font-size="12.5" font-weight="500">
+          <text id="wx" x="150" y="67">2</text>
+          <text id="wy" x="150" y="161">3</text>
+          <text id="wsum" x="430" y="80">5</text>
+        </g>
+
+        <!-- ===== nodes ===== -->
+        <!-- x control -->
+        <g>
+          <rect x="40" y="56" width="104" height="38" rx="6" fill="var(--node)" stroke="var(--num)" stroke-width="3"></rect>
+          <text x="54" y="74" class="nodeLabel" font-size="14" fill="var(--ink)">x</text>
+          <text id="vx" x="92" y="80" font-size="15" font-weight="600" fill="var(--num)">2</text>
+        </g>
+        <!-- y control -->
+        <g>
+          <rect x="40" y="150" width="104" height="38" rx="6" fill="var(--node)" stroke="var(--num)" stroke-width="3"></rect>
+          <text x="54" y="168" class="nodeLabel" font-size="14" fill="var(--ink)">y</text>
+          <text id="vy" x="92" y="174" font-size="15" font-weight="600" fill="var(--num)">3</text>
+        </g>
+
+        <!-- Add primitive (triangle) -->
+        <g>
+          <path d="M320,56 L320,120 L394,88 Z" fill="var(--node-2)" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"></path>
+          <text x="332" y="93" font-size="22" font-weight="600" fill="var(--ink)">+</text>
+          <text x="312" y="138" font-size="11" fill="var(--muted)" text-anchor="middle">Add</text>
+          <text x="360" y="138" font-size="10" fill="var(--muted)" text-anchor="middle">resID 1050</text>
+        </g>
+
+        <!-- Build Array -->
+        <g>
+          <rect x="320" y="196" width="150" height="96" rx="7" fill="var(--node-2)" stroke="var(--struct)" stroke-width="2.5"></rect>
+          <text x="395" y="233" text-anchor="middle" class="nodeLabel" font-size="13.5" fill="var(--ink)">Build</text>
+          <text x="395" y="250" text-anchor="middle" class="nodeLabel" font-size="13.5" fill="var(--ink)">Array</text>
+          <!-- input stubs labels -->
+          <text x="326" y="212" font-size="10" fill="var(--muted)">1</text>
+          <text x="326" y="240" font-size="10" fill="var(--muted)">2</text>
+          <text x="326" y="268" font-size="10" fill="var(--muted)">3</text>
+        </g>
+
+        <!-- b indicator -->
+        <g>
+          <rect x="636" y="70" width="112" height="38" rx="6" fill="var(--node)" stroke="var(--num)" stroke-width="1.6"></rect>
+          <text x="650" y="88" class="nodeLabel" font-size="14" fill="var(--ink)">b</text>
+          <text id="vb" x="736" y="94" font-size="15" font-weight="600" fill="var(--num)" text-anchor="end">5</text>
+        </g>
+        <!-- Data indicator (array) -->
+        <g>
+          <rect x="624" y="224" width="150" height="40" rx="6" fill="var(--node)" stroke="var(--struct)" stroke-width="1.6"></rect>
+          <text x="636" y="243" class="nodeLabel" font-size="13" fill="var(--ink)">Data</text>
+          <text id="vdata" x="762" y="249" font-size="13.5" font-weight="600" fill="var(--struct)" text-anchor="end">[5, 3, 2]</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="card readout">
+    <div class="tile"><span class="k">b = x + y</span><span class="v" id="rb">5</span></div>
+    <div class="tile arr"><span class="k">Data = [ x+y , y , x ]</span><span class="v" id="rdata">[5, 3, 2]</span></div>
+  </div>
+
+  <div class="card notes">
+    <h2>What the diagram does</h2>
+    <p>Two nodes sit on the block diagram. The <b>Add</b> primitive (<code>primResID 1050</code>) takes <code>x</code> and <code>y</code> and produces <code>b = x + y</code>. The <b>Build Array</b> node bundles three scalars — the sum, <code>y</code>, and <code>x</code> — into the 1‑D array <code>Data</code>. <code>x</code> and <code>y</code> each fan out to both nodes; the Add output fans out to both <code>b</code> and the Build Array's top input.</p>
+    <div class="legend">
+      <span><span class="sw"></span>DBL scalar wire</span>
+      <span><span class="sw arr"></span>DBL array wire</span>
+    </div>
+    <p class="foot">Decoded with pylabview · node name resolved from the LabVIEW‑sourced primResID corpus.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  var x=document.getElementById('x'), y=document.getElementById('y'),
+      xr=document.getElementById('xr'), yr=document.getElementById('yr');
+  function fmt(n){ return Number.isInteger(n)? String(n) : (Math.round(n*1000)/1000).toString(); }
+  function set(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+  function render(){
+    var vx=parseFloat(x.value), vy=parseFloat(y.value);
+    if(!isFinite(vx)) vx=0; if(!isFinite(vy)) vy=0;
+    var sum=vx+vy;
+    var arr='['+fmt(sum)+', '+fmt(vy)+', '+fmt(vx)+']';
+    set('vx',fmt(vx)); set('vy',fmt(vy)); set('vb',fmt(sum)); set('vdata',arr);
+    set('wx',fmt(vx)); set('wy',fmt(vy)); set('wsum',fmt(sum));
+    set('rb',fmt(sum)); set('rdata',arr);
+  }
+  function syncFromNum(){ if(Math.abs(parseFloat(x.value))<=10) xr.value=x.value; if(Math.abs(parseFloat(y.value))<=10) yr.value=y.value; render(); }
+  x.addEventListener('input',syncFromNum);
+  y.addEventListener('input',syncFromNum);
+  xr.addEventListener('input',function(){ x.value=xr.value; render(); });
+  yr.addEventListener('input',function(){ y.value=yr.value; render(); });
+  render();
+})();
+</script>
