@@ -1,0 +1,5 @@
+# Dependencies for the VI <-> XML converter (and bundled pylabview).
+# Tkinter is used by the GUI but ships with Python (not pip-installable;
+# on Debian/Ubuntu install the system package: python3-tk).
+numpy>=1.21
+lxml>=4.6

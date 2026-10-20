@@ -5,7 +5,7 @@ Built on **pylabview** (`readRSRC.py`).
 
 ## Setup
 ```
-pip install numpy lxml                       # deps
+pip install -r requirements.txt             # deps (numpy, lxml)
 git clone https://github.com/mefistotelis/pylabview   # the engine (run inside this folder)
 ```
 Layout expected by the scripts: `pylabview/pylabview/readRSRC.py` beside `viconvert.py`.
