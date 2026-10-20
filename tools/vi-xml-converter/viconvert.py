@@ -28,6 +28,19 @@ def ensure_engine():
           "  cd %s\n  git clone %s" % (HERE, PYLABVIEW_URL))
     return False
 
+def missing_sidecars(xml_path):
+    """Return companion files referenced by the master XML that aren't next to it.
+    vi2xml emits the .xml plus block files (*_BDHb.xml, *_LVSR_Field90.bin, ...);
+    all must sit in the same folder to rebuild."""
+    import re
+    d = os.path.dirname(os.path.abspath(xml_path))
+    try:
+        text = open(xml_path, "r", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return []
+    refs = re.findall(r'File="([^"]+)"', text)
+    return [r for r in refs if not os.path.exists(os.path.join(d, r))]
+
 def run(args):
     env = dict(os.environ)
     env["PYTHONPATH"] = PYL + os.pathsep + env.get("PYTHONPATH", "")
@@ -42,6 +55,14 @@ def main(argv):
     if cmd == "vi2xml":
         return run(["-x", "-i", src])
     if cmd == "xml2vi":
+        miss = missing_sidecars(src)
+        if miss:
+            print("ERROR: the master XML needs its companion files in the SAME folder,\n"
+                  "       but these are missing next to %s:" % os.path.basename(src))
+            for m in miss[:12]: print("         -", m)
+            print("       Rebuild only from a folder that holds the full set that\n"
+                  "       'vi2xml' produced (the .xml plus all *_*.xml / *.bin files).")
+            return 4
         out = argv[3] if len(argv) > 3 else os.path.splitext(src)[0] + "_out.vi"
         rc = run(["-c", "-m", src, "-i", out])
         if rc == 0: print("wrote", out)

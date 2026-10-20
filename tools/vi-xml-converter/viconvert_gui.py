@@ -111,9 +111,30 @@ class App:
         self._go(["-x", "-i", os.path.abspath(src)], outdir,
                  "VI → XML  (%s)" % os.path.basename(src))
 
+    def _missing_sidecars(self, xml_path):
+        import re
+        d = os.path.dirname(os.path.abspath(xml_path))
+        try:
+            text = open(xml_path, "r", encoding="utf-8", errors="replace").read()
+        except OSError:
+            return []
+        return [r for r in re.findall(r'File="([^"]+)"', text)
+                if not os.path.exists(os.path.join(d, r))]
+
     def run_xml2vi(self):
         src = self.xml_path.get().strip()
         if not src: return messagebox.showwarning("Pick a file", "Choose the master .xml first.")
+        miss = self._missing_sidecars(src)
+        if miss:
+            self.write("✗ Missing companion files next to this XML (they must be in the "
+                       "same folder as the .xml):")
+            for m in miss[:12]: self.write("     - " + m)
+            self.write("   Rebuild only from a folder holding the full set 'VI → XML' "
+                       "produced.\n")
+            return messagebox.showerror("Missing files",
+                "This .xml references %d companion file(s) that aren't in its folder.\n\n"
+                "Rebuild from a folder that has the complete set that 'VI → XML' "
+                "created (the .xml plus all *_*.xml / *.bin files)." % len(miss))
         out = filedialog.asksaveasfilename(title="Save rebuilt VI as…",
                 defaultextension=".vi", filetypes=[("LabVIEW VI", "*.vi")],
                 initialfile=os.path.splitext(os.path.basename(src))[0] + "_out.vi")
