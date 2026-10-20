@@ -12,6 +12,7 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 HERE = os.path.dirname(os.path.abspath(__file__))
 PYL  = os.path.join(HERE, "pylabview")
 RR   = os.path.join(PYL, "pylabview", "readRSRC.py")
+PYLABVIEW_URL = "https://github.com/mefistotelis/pylabview"
 
 def readrsrc(args, cwd):
     env = dict(os.environ)
@@ -56,9 +57,27 @@ class App:
         self.log = scrolledtext.ScrolledText(root, height=10, wrap="word", state="disabled")
         self.log.pack(fill="both", expand=True, padx=10, pady=(0,10))
 
-        if not os.path.exists(RR):
-            self.write("ERROR: pylabview not found next to this script (expected %s)" % RR)
         self.root.after(120, self.drain)
+        if not os.path.exists(RR):
+            self.write("pylabview engine not found - fetching it automatically…")
+            self.fetch_engine()
+
+    def fetch_engine(self):
+        """Clone pylabview next to this script (needs git on PATH)."""
+        def work():
+            try:
+                res = subprocess.run(["git", "clone", "--depth", "1", PYLABVIEW_URL, PYL],
+                                     capture_output=True, text=True)
+                for line in (res.stdout + res.stderr).splitlines(): self.write("  " + line)
+                if os.path.exists(RR):
+                    self.write("✓ pylabview ready - you can convert now.\n")
+                else:
+                    self.write("✗ auto-fetch failed. Install git, or clone manually:\n"
+                               "   cd %s\n   git clone %s\n" % (HERE, PYLABVIEW_URL))
+            except FileNotFoundError:
+                self.write("✗ git not found on PATH. Clone pylabview manually:\n"
+                           "   cd %s\n   git clone %s\n" % (HERE, PYLABVIEW_URL))
+        threading.Thread(target=work, daemon=True).start()
 
     # pickers
     def pick_vi(self):
@@ -104,6 +123,9 @@ class App:
                  "XML → VI  → %s" % os.path.basename(out))
 
     def _go(self, args, cwd, title):
+        if not os.path.exists(RR):
+            self.write("pylabview engine still missing - fetching… try again when ready.")
+            self.fetch_engine(); return
         self.write("▶ " + title)
         def work():
             try:

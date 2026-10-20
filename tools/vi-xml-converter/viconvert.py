@@ -14,6 +14,19 @@ import sys, os, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 PYL  = os.path.join(HERE, "pylabview")                 # repo root (holds the pylabview package)
 RR   = os.path.join(PYL, "pylabview", "readRSRC.py")
+PYLABVIEW_URL = "https://github.com/mefistotelis/pylabview"
+
+def ensure_engine():
+    """Clone pylabview next to this script if it isn't there yet."""
+    if os.path.exists(RR):
+        return True
+    print("pylabview not found - cloning it from", PYLABVIEW_URL, "...")
+    rc = subprocess.call(["git", "clone", "--depth", "1", PYLABVIEW_URL, PYL])
+    if rc == 0 and os.path.exists(RR):
+        print("pylabview ready."); return True
+    print("Could not fetch pylabview automatically. Clone it manually:\n"
+          "  cd %s\n  git clone %s" % (HERE, PYLABVIEW_URL))
+    return False
 
 def run(args):
     env = dict(os.environ)
@@ -23,6 +36,8 @@ def run(args):
 def main(argv):
     if len(argv) < 3:
         print(__doc__); return 2
+    if not ensure_engine():
+        return 3
     cmd, src = argv[1], argv[2]
     if cmd == "vi2xml":
         return run(["-x", "-i", src])

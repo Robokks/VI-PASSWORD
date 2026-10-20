@@ -4,6 +4,10 @@ Convert a LabVIEW `.vi` to editable XML and rebuild it byte-for-byte, via a GUI 
 Built on **pylabview** (`readRSRC.py`).
 
 ## Setup
+> **First run fetches the engine automatically** (if `git` is on your PATH): the
+> GUI and CLI clone pylabview into this folder when `pylabview/` is missing. The
+> manual `git clone` below is the fallback if auto-fetch can't run.
+
 ```
 pip install -r requirements.txt             # deps (numpy, lxml)
 git clone https://github.com/mefistotelis/pylabview   # the engine (run inside this folder)

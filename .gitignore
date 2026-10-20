@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# pylabview is fetched on first run / cloned manually, not vendored
+tools/vi-xml-converter/pylabview/
