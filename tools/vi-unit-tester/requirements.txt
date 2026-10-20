@@ -1,0 +1,4 @@
+# Windows only - drives LabVIEW via ActiveX (needs LabVIEW installed).
+pywin32>=306
+# Optional: a maintained Pythonic LabVIEW ActiveX wrapper (alternative backend)
+# autolv
